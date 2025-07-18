@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Task Management API Tester</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 20px;
+    }
+    .container {
+      display: flex;
+      gap: 20px;
+    }
+    .form-container, .results {
+      flex: 1;
+    }
+    .form-group {
+      margin-bottom: 15px;
+    }
+    label {
+      display: block;
+      margin-bottom: 5px;
+      font-weight: bold;
+    }
+    input, textarea, select {
+      width: 100%;
+      padding: 8px;
+      box-sizing: border-box;
+    }
+    button {
+      background-color: #4CAF50;
+      color: white;
+      padding: 10px 15px;
+      border: none;
+      cursor: pointer;
+      font-size: 16px;
+    }
+    #taskList {
+      margin-top: 20px;
+    }
+    .task-card {
+      border: 1px solid #ddd;
+      padding: 10px;
+      margin-bottom: 10px;
+      border-radius: 4px;
+    }
+    pre {
+      background-color: #f5f5f5;
+      padding: 10px;
+      border-radius: 4px;
+      overflow-x: auto;
+    }
+  </style>
+</head>
+<body>
+  <h1>Task Management API Tester</h1>
+  
+  <div class="container">
+    <div class="form-container">
+      <h2>Add New Task</h2>
+      <form id="taskForm">
+        <div class="form-group">
+          <label for="taskString">Task String:</label>
+          <input type="text" id="taskString" required placeholder="e.g. TASK-001">
+        </div>
+        
+        <div class="form-group">
+          <label for="description">Description:</label>
+          <textarea id="description" required rows="3" placeholder="Describe the task..."></textarea>
+        </div>
+        
+        <div class="form-group">
+          <label for="estimatedMinutes">Estimated Minutes:</label>
+          <input type="number" id="estimatedMinutes" required min="1" placeholder="e.g. 60">
+        </div>
+        
+        <button type="submit">Add Task</button>
+      </form>
+      
+      <h2>Update Task Status</h2>
+      <form id="updateForm">
+        <div class="form-group">
+          <label for="taskId">Task ID:</label>
+          <input type="text" id="taskId" required placeholder="Task ID to update">
+        </div>
+        
+        <div class="form-group">
+          <label for="status">Status:</label>
+          <select id="status" required>
+            <option value="pending">Pending</option>
+            <option value="in-progress">In Progress</option>
+            <option value="completed">Completed</option>
+          </select>
+        </div>
+        
+        <button type="submit">Update Status</button>
+      </form>
+    </div>
+    
+    <div class="results">
+      <h2>Results</h2>
+      <div id="output">
+        <pre>No requests made yet</pre>
+      </div>
+      
+      <h2>Tasks</h2>
+      <button id="loadTasks">Load All Tasks</button>
+      <div id="taskList"></div>
+    </div>
+  </div>
+
+  <script>
+    // Add task form
+    document.getElementById('taskForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      
+      const taskData = {
+        taskString: document.getElementById('taskString').value,
+        description: document.getElementById('description').value,
+        estimatedMinutes: parseInt(document.getElementById('estimatedMinutes').value)
+      };
+      
+      try {
+        const response = await fetch('/tasks', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(taskData)
+        });
+        
+        const result = await response.json();
+        document.getElementById('output').innerHTML = `<pre>${JSON.stringify(result, null, 2)}</pre>`;
+        
+        if (result.success) {
+          loadTasks();
+        }
+      } catch (error) {
+        document.getElementById('output').innerHTML = `<pre>Error: ${error.message}</pre>`;
+      }
+    });
+    
+    // Update task form
+    document.getElementById('updateForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      
+      const taskId = document.getElementById('taskId').value.trim();
+      const status = document.getElementById('status').value;
+      
+      // Validate that we have a proper MongoDB ObjectId (24 hex characters)
+      if (!taskId.match(/^[0-9a-fA-F]{24}$/)) {
+        document.getElementById('output').innerHTML = `<pre style="color:red">Error: Please enter a valid MongoDB ObjectId (24 hex characters).
+        
+The ID should be copied from the task list on the right. 
+Click on any task ID to copy it automatically.
+        
+Example of valid ID: 64c2a38d9b32f0e1c0123456</pre>`;
+        return;
+      }
+      
+      try {
+        const response = await fetch(`/tasks/${taskId}`, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ status })
+        });
+        
+        const result = await response.json();
+        document.getElementById('output').innerHTML = `<pre>${JSON.stringify(result, null, 2)}</pre>`;
+        
+        if (result.success) {
+          loadTasks();
+        }
+      } catch (error) {
+        document.getElementById('output').innerHTML = `<pre>Error: ${error.message}</pre>`;
+      }
+    });
+    
+    // Load tasks
+    async function loadTasks() {
+      try {
+        const response = await fetch('/tasks');
+        const result = await response.json();
+        
+        // Debug output to see raw data
+        console.log("Task data received:", result);
+        
+        const taskListElement = document.getElementById('taskList');
+        
+        if (result.success && result.data && result.data.length > 0) {
+          const tasksHtml = result.data.map(task => `
+            <div class="task-card">
+              <h3>${task.taskString}</h3>
+              <p><strong>ID:</strong> <span class="task-id" style="cursor:pointer;text-decoration:underline;background-color:#f0f0f0;padding:2px 4px;border-radius:3px;" onclick="copyToUpdateForm('${task._id}')">${task._id}</span> <button onclick="copyToUpdateForm('${task._id}')" style="border:none;background:#4CAF50;color:white;padding:2px 5px;border-radius:3px;cursor:pointer;">Copy ID</button></p>
+              <p><strong>Description:</strong> ${task.description}</p>
+              <p><strong>Estimated Minutes:</strong> ${task.estimatedMinutes}</p>
+              <p><strong>Status:</strong> <span class="status-badge" style="background-color:${getStatusColor(task.status)};padding:3px 8px;border-radius:3px;color:white">${task.status}</span></p>
+              <p><strong>Created:</strong> ${new Date(task.createdAt).toLocaleString()}</p>
+            </div>
+          `).join('');
+          
+          taskListElement.innerHTML = tasksHtml;
+        } else {
+          taskListElement.innerHTML = '<p>No tasks found.</p>';
+        }
+      } catch (error) {
+        console.error("Error loading tasks:", error);
+        document.getElementById('taskList').innerHTML = `<p>Error loading tasks: ${error.message}</p>`;
+      }
+    }
+    
+    // Helper function to get a color for each status
+    function getStatusColor(status) {
+      switch(status) {
+        case 'pending': return '#FFA500'; // Orange
+        case 'in-progress': return '#3498DB'; // Blue
+        case 'completed': return '#2ECC71'; // Green
+        default: return '#95A5A6'; // Grey
+      }
+    }
+    
+    // Helper function to copy task ID to update form
+    function copyToUpdateForm(id) {
+      document.getElementById('taskId').value = id;
+      document.getElementById('taskId').focus();
+      // Show visual feedback
+      const feedback = document.createElement('div');
+      feedback.textContent = "ID copied to update form!";
+      feedback.style.position = "fixed";
+      feedback.style.bottom = "20px";
+      feedback.style.right = "20px";
+      feedback.style.backgroundColor = "#4CAF50";
+      feedback.style.color = "white";
+      feedback.style.padding = "10px 15px";
+      feedback.style.borderRadius = "5px";
+      feedback.style.zIndex = "1000";
+      document.body.appendChild(feedback);
+      
+      // Remove feedback after 2 seconds
+      setTimeout(() => {
+        document.body.removeChild(feedback);
+      }, 2000);
+    }
+    
+    // Initial load and button
+    document.getElementById('loadTasks').addEventListener('click', loadTasks);
+    
+    // Load tasks when page loads
+    window.addEventListener('load', loadTasks);
+  </script>
+</body>
+</html>
